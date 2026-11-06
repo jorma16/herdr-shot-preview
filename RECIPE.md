@@ -8,7 +8,8 @@ it published: PRs, issues, artifacts, Jira tickets.
 ![Shot preview](preview.png)
 
 Two mods (`shot-preview`, `resources-pane`), a `keys.json` and a Claude Code `PostToolUse` hook
-that feeds them. The hook is required: without it the mods have nothing to show.
+that feeds them, shipped inside `shot-preview`. The hook is required: without it the mods have
+nothing to show, and it has to be added to Claude Code's settings by hand.
 
 ## What you see
 
@@ -81,8 +82,10 @@ that feeds them. The hook is required: without it the mods have nothing to show.
 
 ## Built from
 
-- **The hook** (`hook/shot-preview.mjs` + `hook/capture.js`, Node, standard library only),
-  registered in `~/.claude/settings.json` as a `PostToolUse` command hook, matcher
+- **The hook** (`mods/shot-preview/hook/shot-preview.mjs` + `capture.js`, Node, standard
+  library only; inside the mod so installing it installs the hook), registered in
+  `~/.claude/settings.json` as a `PostToolUse` command hook,
+  `node ~/.config/herdr-app/mods/shot-preview/hook/shot-preview.mjs`, matcher
   `Read|Bash|Write|Edit|NotebookEdit|Artifact|mcp__.*`, timeout 10. It reads the hook JSON on
   stdin and writes into `<appHome>/shot-preview/`, where `appHome` is `$HERDR_APP_HOME` or
   `~/.config/herdr-app`. It does nothing if that folder doesn't exist.
@@ -129,7 +132,8 @@ that feeds them. The hook is required: without it the mods have nothing to show.
   - from gpui-base: `Editor` / `EditorState` and `TextView.markdown`.
 
   The files are `main.js` (reads the feeds and picks the role), `card.js`, `panel.js`,
-  `viewer.js`, `ui.js`, and `logic.js` (pure functions with no imports).
+  `viewer.js`, `ui.js`, `logic.js` (pure functions with no imports) and `hook/`, which the mod
+  never loads.
 - **`mods/resources-pane`**: a copy of Herdr's shipped `mods/pane` (Apache-2.0) with a
   `resources` button that calls
   `openOverlay({mod: "shot-preview", props: {terminal}, kind: "dialog", width: 0.85, height: 0.85})`.

@@ -6,15 +6,16 @@ feeds them. See [README.md](README.md) for what they do, the feeds and the insta
 - Herdr runs a **copy** of each `mods/<name>` in `~/.config/herdr-app/mods/<name>`.
   Edit here, never there. `npm run dev` re-copies on every save (the app hot reloads);
   otherwise run `tools/install.sh` after changing anything.
-- The hook runs from this repo (`~/.claude/settings.json` points at `hook/shot-preview.mjs`),
-  so edits apply on the next tool call. It must stay silent and always exit 0.
+- The hook ships inside the mod (`mods/shot-preview/hook/`) and runs from the installed copy
+  (`~/.claude/settings.json` points at `~/.config/herdr-app/mods/shot-preview/hook/shot-preview.mjs`),
+  so hook edits apply once installed. It must stay silent and always exit 0.
 - Images live in `~/.config/herdr-app/shot-preview/`, outside the mod folder: an asset saved
   under `mods/` reloads the mod, and `install.sh` (rsync `--delete`) would wipe it.
 - The API types are `mods/shot-preview/gpui-kit.d.ts` and `~/.config/herdr-app/herdr.d.ts`;
   `~/.config/herdr-app/AGENTS.md` is Herdr's own guide. They're the truth over memory.
 - `mods/resources-pane` is Herdr's shipped `pane` header (`~/.config/herdr-app/mods/pane`)
   plus the Resources button; keep its diff from the shipped one small.
-- Keep `logic.js` and `hook/capture.js` free of `herdr` / `gpui-*` / `fs` imports so
+- Keep `logic.js` and `hook/capture.js` (both in `mods/shot-preview/`) free of `herdr` / `gpui-*` / `fs` imports so
   `npm test` runs them under Node.
 - `RECIPE.md` (the herdr.dev/mods brief, format in Herdr's `AGENTS.md`) and `preview.png`
   describe the real build: update them when what you see or how it behaves changes. Never

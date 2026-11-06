@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { pathsInText, resolvePath, candidates, inlineImages, imageSize, resources, linkType, parseLines, prune, copyName } from "../hook/capture.js";
+import { pathsInText, resolvePath, candidates, inlineImages, imageSize, resources, linkType, parseLines, prune, copyName } from "../mods/shot-preview/hook/capture.js";
 
-const HOOK = join(dirname(fileURLToPath(import.meta.url)), "../hook/shot-preview.mjs");
+const HOOK = join(dirname(fileURLToPath(import.meta.url)), "../mods/shot-preview/hook/shot-preview.mjs");
 
 // A 3×2 PNG: signature + IHDR is all imageSize reads.
 function png(w, h) {

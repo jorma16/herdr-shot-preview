@@ -27,8 +27,8 @@ artifacts, Jira tickets…).
 
 ## How it works
 
-A Claude Code `PostToolUse` hook (`hook/shot-preview.mjs`, Node, standard library only) writes
-two feeds into `~/.config/herdr-app/shot-preview/` (or `$HERDR_APP_HOME`), and the mod watches
+A Claude Code `PostToolUse` hook (`hook/shot-preview.mjs` inside the `shot-preview` mod, so it
+is installed with it; Node, standard library only) writes two feeds into `~/.config/herdr-app/shot-preview/` (or `$HERDR_APP_HOME`), and the mod watches
 that folder (`watchFolder`):
 
 | Tool | Recorded |
@@ -49,8 +49,9 @@ panel knows the agent), folder and time. The hook never blocks or fails a tool c
 
 ## Install
 
-Clone this repo; the hook runs from it. Added from herdr.dev/mods, Herdr copies the mods and
-merges `keys.json` (steps 1 and 4), but the layout (2) and the hook (3) are still yours to do.
+Added from herdr.dev/mods, Herdr copies the mods (the hook comes inside `shot-preview`) and
+merges `keys.json` (steps 1 and 4); the layout (2) and the hook's line in Claude Code's
+settings (3) are still yours to do.
 
 1. The mods: `tools/install.sh` (copies `mods/*` into `~/.config/herdr-app/mods/`).
 2. In your layout (a clone, not a shipped one), e.g. a clone of `main`:
@@ -65,14 +66,15 @@ merges `keys.json` (steps 1 and 4), but the layout (2) and the hook (3) are stil
      header plus that button, so it won't get Herdr's later changes to `pane`.
 
    Check `~/.config/herdr-app/layout.error`.
-3. The hook, in `~/.claude/settings.json`, with the path where you cloned this repo:
+3. The hook, in `~/.claude/settings.json`. It runs from the installed mod (with another
+   `$HERDR_APP_HOME`, use that path and set the variable for Claude Code too):
 
    ```json
    "hooks": {
      "PostToolUse": [
        {
          "matcher": "Read|Bash|Write|Edit|NotebookEdit|Artifact|mcp__.*",
-         "hooks": [ { "type": "command", "command": "node ~/dev/herdr-shot-preview/hook/shot-preview.mjs", "timeout": 10 } ]
+         "hooks": [ { "type": "command", "command": "node ~/.config/herdr-app/mods/shot-preview/hook/shot-preview.mjs", "timeout": 10 } ]
        }
      ]
    }
@@ -87,7 +89,7 @@ from scratch.
 ## Develop
 
 ```sh
-npm run dev           # copy into Herdr on every save, so the app hot reloads
+npm run dev           # copy into Herdr on every save: the app hot reloads, the hook updates
 npm test              # pure logic + the hook end to end, under node --test
 npm run check         # herdr-app check on both mods
 ```
@@ -95,13 +97,13 @@ npm run check         # herdr-app check on both mods
 Try the hook by hand (`SHOT_PREVIEW_DEBUG=1` prints its errors):
 
 ```sh
-echo '{"tool_name":"Edit","cwd":"/tmp","tool_input":{"file_path":"'$PWD'/README.md"}}' | node hook/shot-preview.mjs
+echo '{"tool_name":"Edit","cwd":"/tmp","tool_input":{"file_path":"'$PWD'/README.md"}}' | node mods/shot-preview/hook/shot-preview.mjs
 ```
 
 | File | What |
 |---|---|
-| `hook/shot-preview.mjs` | the Claude Code hook: copies images, writes both feeds |
-| `hook/capture.js` | its pure logic: finding images, files and links in a tool call; image sizes |
+| `mods/shot-preview/hook/shot-preview.mjs` | the Claude Code hook: copies images, writes both feeds |
+| `mods/shot-preview/hook/capture.js` | its pure logic: finding images, files and links in a tool call; image sizes |
 | `mods/shot-preview/main.js` | reads the feeds, picks the view |
 | `mods/shot-preview/card.js` | the floating card |
 | `mods/shot-preview/panel.js` | the Resources panel |

@@ -1,5 +1,5 @@
 // What Claude Code agents produce, in Herdr. The Claude Code hook in this repo
-// (hook/shot-preview.mjs) writes two feeds into <appHome>/shot-preview/: feed.jsonl (images,
+// (hook/shot-preview.mjs, in this folder) writes two feeds into <appHome>/shot-preview/: feed.jsonl (images,
 // copied next to it) and resources.jsonl (files written or edited, pages published). This mod
 // watches that folder and is three views, by how it was opened:
 //   floating block (the layout's): a card that pops up with each new image (card.js).
