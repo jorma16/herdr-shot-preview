@@ -1,4 +1,4 @@
-// Watches mods/shot-preview and copies it into Herdr's mods folder on every change, so the app
+// Watches mods/ and copies them into Herdr's mods folder on every change, so the app
 // hot reloads as you edit here. Standard library only. Run from the repo root: npm run dev
 import { watch } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
-const src = join(repo, "mods/shot-preview");
+const src = join(repo, "mods");
 const install = join(repo, "tools/install.sh");
 
 function sync() {

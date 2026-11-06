@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { pathsInText, resolvePath, candidates, inlineImages, imageSize, parseLines, prune, copyName } from "../hook/capture.js";
+import { pathsInText, resolvePath, candidates, inlineImages, imageSize, resources, linkType, parseLines, prune, copyName } from "../hook/capture.js";
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), "../hook/shot-preview.mjs");
 
@@ -118,4 +118,49 @@ test("the hook copies a fresh Bash capture once and ignores stale ones", () => {
 
 test("the hook exits 0 on garbage input and without Herdr", () => {
   execFileSync("node", [HOOK], { input: "{nope", env: { ...process.env, HERDR_APP_HOME: "/nonexistent-herdr" } });
+});
+
+test("resources: files written and edited, temp files left out", () => {
+  const home = "/h";
+  assert.deepEqual(resources({ tool_name: "Write", cwd: "/w", tool_input: { file_path: "src/a.ts" }, tool_response: { type: "create" } }, home),
+    [{ kind: "file", path: "/w/src/a.ts", op: "create" }]);
+  assert.deepEqual(resources({ tool_name: "Write", cwd: "/w", tool_input: { file_path: "/w/a.ts" }, tool_response: { type: "update" } }, home),
+    [{ kind: "file", path: "/w/a.ts", op: "edit" }]);
+  assert.deepEqual(resources({ tool_name: "Edit", cwd: "/w", tool_input: { file_path: "/w/b.md" } }, home), [{ kind: "file", path: "/w/b.md", op: "edit" }]);
+  assert.deepEqual(resources({ tool_name: "NotebookEdit", cwd: "/w", tool_input: { notebook_path: "/w/n.ipynb" } }, home), [{ kind: "file", path: "/w/n.ipynb", op: "edit" }]);
+  assert.deepEqual(resources({ tool_name: "Write", cwd: "/w", tool_input: { file_path: "/private/tmp/x/s.py" } }, home), []);
+  assert.deepEqual(resources({ tool_name: "Read", cwd: "/w", tool_input: { file_path: "/w/a.ts" } }, home), []);
+});
+
+test("resources: links from gh, Artifact and MCP create tools", () => {
+  const home = "/h";
+  const pr = { tool_name: "Bash", cwd: "/w", tool_input: { command: `gh pr create --title "feat(ABC-1): login" --body x` }, tool_response: { stdout: "https://github.com/o/r/pull/66\n" } };
+  assert.deepEqual(resources(pr, home), [{ kind: "link", url: "https://github.com/o/r/pull/66", type: "pr", title: "feat(ABC-1): login" }]);
+  assert.deepEqual(resources({ ...pr, tool_input: { command: "git push -u origin x" }, tool_response: { stderr: "https://github.com/o/r/pull/new/x" } }, home), []);
+  const art = { tool_name: "Artifact", tool_input: { file_path: "/s/report.html" }, tool_response: [{ type: "text", text: "Published https://claude.ai/code/artifact/abc-123." }] };
+  assert.deepEqual(resources(art, home), [{ kind: "link", url: "https://claude.ai/code/artifact/abc-123", type: "artifact", title: "report.html" }]);
+  assert.deepEqual(resources({ ...art, tool_input: { action: "read", url: "https://claude.ai/code/artifact/abc-123" } }, home), []);
+  const jira = { tool_name: "mcp__claude_ai_Atlassian_MCP__createJiraIssue", tool_input: { summary: "Fix login" },
+    tool_response: [{ type: "text", text: '{"id":"1","key":"ENG-12","self":"https://acme.atlassian.net/rest/api/3/issue/1"}' }] };
+  assert.deepEqual(resources(jira, home), [{ kind: "link", url: "https://acme.atlassian.net/browse/ENG-12", type: "jira", title: "ENG-12 Fix login" }]);
+  assert.deepEqual(resources({ ...jira, tool_name: "mcp__claude_ai_Atlassian_MCP__getJiraIssue" }, home), []);
+});
+
+test("linkType", () => {
+  assert.equal(linkType("https://github.com/o/r/issues/3"), "issue");
+  assert.equal(linkType("https://gitlab.com/o/r/-/merge_requests/3"), "pr");
+  assert.equal(linkType("https://acme.atlassian.net/wiki/spaces/X/pages/1"), "doc");
+  assert.equal(linkType("https://example.com"), "link");
+});
+
+test("the hook records files and links in resources.jsonl", () => {
+  const root = mkdtempSync(join(tmpdir(), "shot-preview-"));
+  const app = join(root, "herdr-app");
+  mkdirSync(app);
+  const run = (input) => execFileSync("node", [HOOK], { input: JSON.stringify(input), env: { ...process.env, HERDR_APP_HOME: app, HC_TERMINAL_ID: "t4" } });
+  run({ session_id: "s", tool_name: "Edit", cwd: "/w", tool_input: { file_path: "/w/a.ts" } });
+  run({ session_id: "s", tool_name: "Bash", cwd: "/w", tool_input: { command: "gh issue create -t Bug" }, tool_response: { stdout: "https://github.com/o/r/issues/9" } });
+  const lines = parseLines(readFileSync(join(app, "shot-preview/resources.jsonl"), "utf8"), "kind");
+  assert.deepEqual(lines.map((l) => [l.kind, l.path ?? l.url, l.terminal]), [["file", "/w/a.ts", "t4"], ["link", "https://github.com/o/r/issues/9", "t4"]]);
+  assert.equal(lines[1].title, "Bug");
 });

@@ -119,14 +119,89 @@ export function imageSize(b) {
   return null;
 }
 
+// ---- files and links -------------------------------------------------------------------------
+
+// Scratch files agents write and throw away: not worth listing.
+const TEMP = /^\/(?:private\/)?(?:tmp|var\/folders)\//;
+
+const URL_RE = /https?:\/\/[^\s"'<>`)\]}]+/g;
+
+/** What kind of page a URL is: pr, issue, artifact, jira, doc, release, gist or link. */
+export function linkType(url) {
+  if (/\/pull\/\d+|\/merge_requests\/\d+/.test(url)) return "pr";
+  if (/\/issues\/\d+/.test(url)) return "issue";
+  if (/claude\.ai\/(?:code\/)?artifact\//.test(url)) return "artifact";
+  if (/\/browse\/[A-Z][A-Z0-9]+-\d+/.test(url)) return "jira";
+  if (/\/wiki\/|docs\.google\.com/.test(url)) return "doc";
+  if (/\/releases\/tag\//.test(url)) return "release";
+  if (/gist\.github\.com/.test(url)) return "gist";
+  return "link";
+}
+
+const urlsIn = (s) => (typeof s === "string" ? s.match(URL_RE) ?? [] : []).map((u) => u.replace(/[.,;:]+$/, ""));
+
+function flagValue(command, ...flags) {
+  for (const f of flags) {
+    const m = new RegExp(`(?:^|\\s)${f}(?:=|\\s+)(?:"((?:[^"\\\\]|\\\\.)*)"|'([^']*)'|(\\S+))`).exec(command);
+    if (m) return m[1] ?? m[2] ?? m[3];
+  }
+  return null;
+}
+
+/**
+ * The files a tool call wrote and the pages it published: [{ kind: "file", path, op }] and
+ * [{ kind: "link", url, type, title }].
+ */
+export function resources(input, home) {
+  const tool = input?.tool_name ?? "";
+  const cwd = input?.cwd || home;
+  const ti = input?.tool_input ?? {};
+  const res = input?.tool_response;
+  const out = [];
+  const file = (p, op) => {
+    if (typeof p !== "string" || !p) return;
+    const path = resolvePath(p, cwd, home);
+    if (!TEMP.test(path)) out.push({ kind: "file", path, op });
+  };
+  const link = (url, title) => out.push({ kind: "link", url, type: linkType(url), title: title || null });
+
+  if (tool === "Write") file(ti.file_path, res?.type === "create" ? "create" : "edit");
+  else if (tool === "Edit" || tool === "MultiEdit") file(ti.file_path, "edit");
+  else if (tool === "NotebookEdit") file(ti.notebook_path, "edit");
+  else if (tool === "Bash") {
+    const cmd = typeof ti.command === "string" ? ti.command : "";
+    if (/\b(?:gh|glab)\s+(?:pr|mr|issue|release|gist|repo)\s+create\b/.test(cmd)) {
+      const title = flagValue(cmd, "--title", "-t");
+      const urls = [...urlsIn(res?.stdout), ...urlsIn(res?.stderr)].filter((u) => !/\/pull\/new\//.test(u));
+      if (urls[0]) link(urls[0], title);
+    }
+  } else if (tool === "Artifact") {
+    const action = ti.action ?? "publish";
+    if (action === "publish" && !ti.asset) {
+      const url = [...strings(res)].flatMap(urlsIn).find((u) => linkType(u) === "artifact");
+      if (url) link(url, ti.title || (ti.file_path ? ti.file_path.split("/").pop() : null));
+    }
+  } else if (tool.startsWith("mcp__") && /create|publish/i.test(tool.split("__").pop())) {
+    const all = [...strings(res)];
+    const urls = all.flatMap(urlsIn);
+    const page = urls.find((u) => !/\/rest\/|\/api\/|\/gateway\//.test(u));
+    const key = all.map((s) => /^[A-Z][A-Z0-9]+-\d+$/.exec(s.trim())?.[0]).find(Boolean)
+      ?? all.map((s) => /"key"\s*:\s*"([A-Z][A-Z0-9]+-\d+)"/.exec(s)?.[1]).find(Boolean);
+    const title = ti.summary ?? ti.title ?? ti.name ?? null;
+    if (page) link(page, title ?? key);
+    else if (key && urls[0]) link(`${new URL(urls[0]).origin}/browse/${key}`, title ? `${key} ${title}` : key);
+  }
+  return out;
+}
+
 /** Feed lines (JSON per line) to entries, oldest first; bad lines are skipped. */
-export function parseLines(text) {
+export function parseLines(text, field = "name") {
   const out = [];
   for (const line of (text ?? "").split("\n")) {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line);
-      if (e && typeof e.name === "string") out.push(e);
+      if (e && typeof e[field] === "string") out.push(e);
     } catch {
       // a half-written line from a concurrent append: skip it
     }

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "herdr-app check mods/shot-preview",
+    "check": "herdr-app check mods/shot-preview && herdr-app check mods/resources-pane",
     "install-mod": "tools/install.sh",
     "dev": "node tools/dev.js"
   }
