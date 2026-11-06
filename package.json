@@ -1,0 +1,13 @@
+{
+  "name": "herdr-shot-preview",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Herdr mod: a preview of the images Claude Code captures or looks at.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "herdr-app check mods/shot-preview",
+    "install-mod": "tools/install.sh",
+    "dev": "node tools/dev.js"
+  }
+}
