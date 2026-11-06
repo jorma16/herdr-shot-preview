@@ -2,12 +2,13 @@
   "name": "herdr-shot-preview",
   "version": "0.1.0",
   "private": true,
-  "description": "Herdr mod: a preview of the images Claude Code captures or looks at.",
+  "description": "Herdr mods: what each Claude Code agent produces (images, files and links).",
   "type": "module",
   "scripts": {
     "test": "node --test",
     "check": "herdr-app check mods/shot-preview && herdr-app check mods/resources-pane",
     "install-mod": "tools/install.sh",
     "dev": "node tools/dev.js"
-  }
+  },
+  "license": "Apache-2.0"
 }

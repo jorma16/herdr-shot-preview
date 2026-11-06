@@ -16,6 +16,9 @@ feeds them. See [README.md](README.md) for what they do, the feeds and the insta
   plus the Resources button; keep its diff from the shipped one small.
 - Keep `logic.js` and `hook/capture.js` free of `herdr` / `gpui-*` / `fs` imports so
   `npm test` runs them under Node.
+- `RECIPE.md` (the herdr.dev/mods brief, format in Herdr's `AGENTS.md`) and `preview.png`
+  describe the real build: update them when what you see or how it behaves changes. Never
+  shoot the preview with real feeds; swap in demo data and restore them.
 - Before calling a change done: `npm test`, `npm run check`, and look at it in the app
   (`herdr-app shot`; run the hook by hand to make the card pop; `mod.open shot-preview` for
   the panel). The check only covers the first render, where the card is empty.

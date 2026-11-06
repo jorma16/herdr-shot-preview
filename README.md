@@ -4,6 +4,8 @@
 captures or looks at, the files it writes or edits, and the pages it publishes (PRs, issues,
 artifacts, Jira tickets…).
 
+![The Resources panel](preview.png)
+
 - **Card**: a floating block (bottom right by default) that pops up with each new image for
   10 s and stays while hovered. It shows the image, the agent that took it (click to go to it),
   how long ago, `+N` if more came in meanwhile, ↗ to open it in Preview and × to hide it. Click
@@ -47,6 +49,9 @@ panel knows the agent), folder and time. The hook never blocks or fails a tool c
 
 ## Install
 
+Clone this repo; the hook runs from it. Added from herdr.dev/mods, Herdr copies the mods and
+merges `keys.json` (steps 1 and 4), but the layout (2) and the hook (3) are still yours to do.
+
 1. The mods: `tools/install.sh` (copies `mods/*` into `~/.config/herdr-app/mods/`).
 2. In your layout (a clone, not a shipped one), e.g. a clone of `main`:
    - the card, as a floating block on the `work` column:
@@ -60,7 +65,7 @@ panel knows the agent), folder and time. The hook never blocks or fails a tool c
      header plus that button, so it won't get Herdr's later changes to `pane`.
 
    Check `~/.config/herdr-app/layout.error`.
-3. The hook, in `~/.claude/settings.json` (path to this repo):
+3. The hook, in `~/.claude/settings.json`, with the path where you cloned this repo:
 
    ```json
    "hooks": {
@@ -73,8 +78,11 @@ panel knows the agent), folder and time. The hook never blocks or fails a tool c
    }
    ```
 
-4. A key for the panel, in `~/.config/herdr-app/keys.json`:
-   `"global": { "cmd-shift-r": { "command": "mod.open", "args": { "name": "shot-preview" } } }`.
+4. A key for the panel: merge [`keys.json`](keys.json) into `~/.config/herdr-app/keys.json`
+   (`cmd-shift-r` → `mod.open shot-preview`).
+
+macOS only (it opens files with `open`). [RECIPE.md](RECIPE.md) is the brief to rebuild it
+from scratch.
 
 ## Develop
 
@@ -101,3 +109,10 @@ echo '{"tool_name":"Edit","cwd":"/tmp","tool_input":{"file_path":"'$PWD'/README.
 | `mods/shot-preview/logic.js` | pure functions: parsing, grouping per agent, formats |
 | `mods/resources-pane/` | Herdr's pane header plus the Resources button |
 | `test/` | `node --test` suites |
+| `keys.json` | the key Herdr merges in when the mod is added from herdr.dev |
+| `RECIPE.md`, `preview.png` | the herdr.dev/mods brief and screenshot |
+
+## License
+
+Apache-2.0 ([LICENSE](LICENSE)). `mods/resources-pane` is a modified copy of Herdr's shipped
+`pane` header mod, also Apache-2.0.

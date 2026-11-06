@@ -1,0 +1,5 @@
+{
+  "global": {
+    "cmd-shift-r": { "command": "mod.open", "args": { "name": "shot-preview" } }
+  }
+}
