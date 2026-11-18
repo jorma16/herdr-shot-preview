@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseFeed, fit, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown } from "../mods/shot-preview/logic.js";
+import { parseFeed, fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown } from "../mods/shot-preview/logic.js";
 
 test("parseFeed: newest first, unsafe names and broken lines out", () => {
   const text = '{"name":"a.png"}\n{"name":"../x.png"}\n{bad\n{"name":"b.png"}\n';
@@ -14,6 +14,38 @@ test("fit keeps the aspect, never upscales past cap, falls back without a size",
   assert.deepEqual(fit(100, 50, 300, 200), { w: 100, h: 50 });
   assert.deepEqual(fit(null, null, 300, 200), { w: 300, h: 200 });
   assert.deepEqual(fit(10, 10, 0, 200), { w: 0, h: 0 });
+});
+
+test("placeImage centers what fits and keeps what overflows covering the box", () => {
+  const base = { w: 400, h: 200 };
+  const view = { w: 400, h: 300 };
+  assert.deepEqual(placeImage(base, view, 1, -50, 99), { w: 400, h: 200, x: 0, y: 50 });
+  assert.deepEqual(placeImage(base, view, 2, 10, -500), { w: 800, h: 400, x: 0, y: -100 });
+  assert.deepEqual(placeImage(base, view, 2, -1000, -20), { w: 800, h: 400, x: -400, y: -20 });
+});
+
+test("zoomAround keeps the point under the pointer, within 1..max", () => {
+  const base = { w: 400, h: 300 };
+  const view = { w: 400, h: 300 };
+  const z = zoomAround(base, view, { z: 1, x: 0, y: 0 }, 2, 100, 75, 8);
+  assert.deepEqual(z, { z: 2, x: -100, y: -75 });
+  // The image point under (100, 75) is still a quarter in.
+  assert.equal((100 - z.x) / (base.w * z.z), 0.25);
+  assert.equal(zoomAround(base, view, z, 100, 0, 0, 8).z, 8);
+  assert.deepEqual(zoomAround(base, view, z, 0.1, 0, 0, 8), { z: 1, x: 0, y: 0 });
+});
+
+test("maxZoom: 4× the image's pixels, at least 4× the fit", () => {
+  assert.equal(maxZoom({ w: 500, h: 250 }, 2000), 16);
+  assert.equal(maxZoom({ w: 100, h: 50 }, 100), 4);
+  assert.equal(maxZoom({ w: 300, h: 200 }, undefined), 4);
+});
+
+test("panBy moves a zoomed image but not past its edges", () => {
+  const base = { w: 400, h: 300 };
+  const view = { w: 400, h: 300 };
+  assert.deepEqual(panBy(base, view, { z: 2, x: -100, y: -75 }, 30, -20), { z: 2, x: -70, y: -95 });
+  assert.deepEqual(panBy(base, view, { z: 2, x: -100, y: -75 }, 500, -500), { z: 2, x: 0, y: -300 });
 });
 
 test("ago", () => {

@@ -23,6 +23,39 @@ export function fit(w, h, maxW, maxH, cap = 1) {
   return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
 }
 
+// ---- zoom ------------------------------------------------------------------------------------
+// A zoomed image in a view box: `base` is its fitted size (zoom 1), `z` the zoom over it, and
+// x, y its top-left inside the box.
+
+/** Where the image sits at zoom z: centered on an axis it doesn't fill, never leaving a gap on one it overflows. */
+export function placeImage(base, view, z, x, y) {
+  const w = base.w * z;
+  const h = base.h * z;
+  const axis = (size, room, at) => (size <= room ? (room - size) / 2 : Math.min(0, Math.max(room - size, at)));
+  return { w, h, x: axis(w, view.w, x), y: axis(h, view.h, y) };
+}
+
+/** The deepest zoom: 4× the image's own pixels, and at least 4× the fit. */
+export function maxZoom(base, imgW) {
+  return Math.max(4, imgW > 0 && base.w > 0 ? (4 * imgW) / base.w : 0);
+}
+
+/** Zooms by `factor` around point (px, py) of the box, keeping the pixel under it in place. */
+export function zoomAround(base, view, cur, factor, px, py, maxZ) {
+  const at = placeImage(base, view, cur.z, cur.x, cur.y);
+  const z = Math.max(1, Math.min(maxZ, cur.z * factor));
+  const fx = at.w > 0 ? (px - at.x) / at.w : 0.5;
+  const fy = at.h > 0 ? (py - at.y) / at.h : 0.5;
+  const p = placeImage(base, view, z, px - fx * base.w * z, py - fy * base.h * z);
+  return { z, x: p.x, y: p.y };
+}
+
+/** Moves a zoomed image by (dx, dy), within the box. */
+export function panBy(base, view, cur, dx, dy) {
+  const p = placeImage(base, view, cur.z, cur.x + dx, cur.y + dy);
+  return { z: cur.z, x: p.x, y: p.y };
+}
+
 /** How long ago, short: "now", "42s", "5m", "3h", "2d". */
 export function ago(at, now) {
   const s = Math.max(0, Math.round((now - at) / 1000));

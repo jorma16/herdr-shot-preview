@@ -1,13 +1,14 @@
 // The Resources panel (a dialog): what one agent, or all of them, produced. Three tabs:
-//   Images: the selected one big, with a strip of thumbnails.
+//   Images: the selected one big (zoomable), with a strip of thumbnails.
 //   Files: the files written or edited, with a live read-only preview.
 //   Links: PRs, issues, artifacts, Jira tickets… opened in the browser.
-// Keys: 1/2/3 tabs; ←/→ images; ↑/↓ files and links; Enter opens; Esc closes.
+// Keys: 1/2/3 tabs; ←/→ images, +/-/0 zoom; ↑/↓ files and links; Enter opens; Esc closes.
+// Zoom: cmd- or ctrl-scroll, pinch, or double-click; scroll or drag to pan a zoomed image.
 
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState, TextView } from "gpui-base";
 import { agents, closeOverlay, focused, home, props, readTextFile, run, settings, theme } from "herdr";
-import { fit, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
+import { fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
 import { iconButton, textButton, open } from "./ui.js";
 
 const DIR = "shot-preview";
@@ -15,6 +16,7 @@ const TABS = ["images", "files", "links"];
 const THUMB_W = 96;
 const THUMB_H = 64;
 const MAX_CHIPS = 8;
+const ZOOM_STEP = 1.25;
 
 export function initPanel(v, cx, p) {
   // The agent to show: given, else the focused terminal; "all" if it produced nothing.
@@ -28,6 +30,9 @@ export function initPanel(v, cx, p) {
   v.md = null;
   v.fileError = null;
   v.size = null;
+  v.view = null; // the big image's box, measured
+  v.zoom = null; // { name, z, x, y } for the image it was set on; anything else is at fit
+  v.drag = null; // the last pointer position while dragging a zoomed image
   v.handle = cx.focus_handle();
   const focus = () => v.handle.focus();
   focus();
@@ -132,6 +137,9 @@ function onKey(v, ev, cx) {
       v.sel = d.images[Math.max(0, Math.min(d.images.length - 1, i + (k === "left" ? -1 : 1)))].name;
       cx.notify();
     } else if (k === "enter") open([`${v.dir}/${d.images[i].name}`], "the image");
+    else if (k === "0") resetZoom(v, cx);
+    else if (k === "+" || k === "=" || ev.key_char === "+") zoomStep(v, d.images[i], ZOOM_STEP, cx);
+    else if (k === "-") zoomStep(v, d.images[i], 1 / ZOOM_STEP, cx);
   } else if (v.tab === "files" && d.files.length > 0) {
     const i = Math.max(0, d.files.findIndex((f) => f.path === v.fileSel));
     if (k === "up" || k === "down") {
@@ -217,20 +225,104 @@ function imagesTab(v, t, images) {
   if (images.length === 0) return empty(t, "No images yet: they show up when the agent takes a screenshot or reads an image.");
   const e = images[indexOf(images, v.sel)];
   const { text } = whoTook(e, agents(), home());
-  // Room left for the big image: the panel minus padding, header, tabs, rule, meta and strip.
-  const box = v.size ? { w: v.size.width - 24, h: v.size.height - 24 - 28 - 28 - 1 - 20 - (THUMB_H + 4) - 50 } : { w: 600, h: 400 };
-  const big = fit(e.w, e.h, box.w, box.h, 1);
+  const g = geometry(v, e);
+  const cur = zoomOf(v, e);
+  const at = placeImage(g.base, g.view, cur.z, cur.x, cur.y);
+  const zoomed = cur.z > 1;
+  const level = zoomed ? (e.w > 0 ? `${Math.round((at.w / e.w) * 100)}%` : `${cur.z.toFixed(1)}×`) : "Fit";
   const meta = [text, toolLabel(e.tool), e.w ? `${e.w}×${e.h}` : null, ago(e.at, Date.now())].filter(Boolean).join(" · ");
+  const center = () => ({ x: g.view.w / 2, y: g.view.h / 2 });
   return v_flex().flex_1().min_h(0).gap(10)
     .child(h_flex().h(24).flex_none().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(e.src ? shortPath(e.src, home()) : baseName(e.name)))
+      .child(h_flex().flex_none().gap(2).items_center()
+        .child(iconButton(t, "sp-zoom-out", "−", "Zoom out (-)", (cx) => zoomStep(v, e, 1 / ZOOM_STEP, cx)))
+        .child(div().id("sp-zoom-level").flex_none().w(44).h(20).flex().items_center().justify_center().rounded(4)
+          .text_size(11).text_color(zoomed ? t.foreground : t.dim).cursor_pointer()
+          .tooltip("Back to fit (0) · cmd-scroll, pinch or double-click to zoom")
+          .hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => resetZoom(v, cx))
+          .child(level))
+        .child(iconButton(t, "sp-zoom-in", "+", "Zoom in (+)", (cx) => zoomStep(v, e, ZOOM_STEP, cx))))
       .child(textButton(t, "sp-img-open", "Open", "Open in Preview (Enter)", () => open([`${v.dir}/${e.name}`], "the image")))
       .when(Boolean(e.src), (el) => el.child(textButton(t, "sp-img-reveal", "Finder", "Show the original in Finder", () => open(["-R", e.src], "Finder")))))
-    .child(div().flex_1().min_h(0).flex().items_center().justify_center()
-      .child(image(`${DIR}/${e.name}`).w(big.w).h(big.h).rounded(4)))
+    .child(div().id("sp-img-view").flex_1().min_h(0).relative().overflow_hidden()
+      .when(zoomed, (el) => (v.drag ? el.cursor_grabbing() : el.cursor_grab()))
+      .on_size_change((size, cx) => {
+        if (v.view?.w === size.width && v.view?.h === size.height) return;
+        v.view = { w: size.width, h: size.height };
+        cx.notify();
+      })
+      .on_scroll_wheel((ev, cx) => {
+        const p = ev.local_position ?? center();
+        if (ev.modifiers.platform || ev.modifiers.control) setZoom(v, e, zoomAround(g.base, g.view, zoomOf(v, e), Math.exp(ev.delta.y / 200), p.x, p.y, g.max), cx);
+        else if (zoomOf(v, e).z > 1) setZoom(v, e, panBy(g.base, g.view, zoomOf(v, e), ev.delta.x, ev.delta.y), cx);
+      })
+      .on_pinch((ev, cx) => {
+        const p = ev.local_position ?? center();
+        setZoom(v, e, zoomAround(g.base, g.view, zoomOf(v, e), 1 + ev.delta, p.x, p.y, g.max), cx);
+      })
+      .on_mouse_down("left", (ev, cx) => {
+        if (ev.click_count >= 2) {
+          // Double-click: fit ↔ the image's own pixels (2× when it already fits at those).
+          v.drag = null;
+          if (zoomOf(v, e).z > 1) return resetZoom(v, cx);
+          const p = ev.local_position ?? center();
+          const own = e.w > 0 ? e.w / g.base.w : 1;
+          return setZoom(v, e, zoomAround(g.base, g.view, zoomOf(v, e), own >= 1.5 ? own : 2, p.x, p.y, g.max), cx);
+        }
+        if (zoomOf(v, e).z <= 1) return;
+        v.drag = { x: ev.position.x, y: ev.position.y };
+        cx.notify();
+      })
+      .on_mouse_up("left", (_ev, cx) => {
+        if (!v.drag) return;
+        v.drag = null;
+        cx.notify();
+      })
+      .on_mouse_move((ev, cx) => {
+        if (!v.drag) return;
+        const dx = ev.position.x - v.drag.x;
+        const dy = ev.position.y - v.drag.y;
+        v.drag = { x: ev.position.x, y: ev.position.y };
+        setZoom(v, e, panBy(g.base, g.view, zoomOf(v, e), dx, dy), cx);
+      })
+      .on_hover((hovered, cx) => {
+        if (hovered || !v.drag) return;
+        v.drag = null;
+        cx.notify();
+      })
+      .child(image(`${DIR}/${e.name}`).absolute().left(at.x).top(at.y).w(at.w).h(at.h).rounded(zoomed ? 0 : 4)))
     .child(div().h(20).flex_none().truncate().text_color(t.dim).child(meta))
     .child(h_flex().id("sp-strip").h(THUMB_H + 4).flex_none().gap(6).overflow_x_scroll()
       .children(images.map((x) => thumb(v, t, x, x.name === e.name))));
+}
+
+// The big image's box (measured; a guess from the panel size until then), its fitted size and
+// how far it zooms.
+function geometry(v, e) {
+  const view = v.view ?? (v.size ? { w: v.size.width - 24, h: v.size.height - 24 - 28 - 28 - 1 - 24 - 20 - (THUMB_H + 4) - 50 } : { w: 600, h: 400 });
+  const base = fit(e.w, e.h, view.w, view.h, 1);
+  return { view, base, max: maxZoom(base, e.w) };
+}
+
+const zoomOf = (v, e) => (v.zoom?.name === e.name ? v.zoom : { z: 1, x: 0, y: 0 });
+
+function setZoom(v, e, z, cx) {
+  v.zoom = z.z > 1 ? { name: e.name, ...z } : null;
+  cx.notify();
+}
+
+function resetZoom(v, cx) {
+  v.zoom = null;
+  v.drag = null;
+  cx.notify();
+}
+
+// +/- and the buttons: around the middle of the box.
+function zoomStep(v, e, factor, cx) {
+  const g = geometry(v, e);
+  setZoom(v, e, zoomAround(g.base, g.view, zoomOf(v, e), factor, g.view.w / 2, g.view.h / 2, g.max), cx);
 }
 
 function thumb(v, t, e, selected) {

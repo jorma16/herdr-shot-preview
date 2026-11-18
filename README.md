@@ -12,13 +12,15 @@ artifacts, Jira tickets…).
   the image for the Resources panel.
 - **Resources panel**: a dialog with what one agent produced, or all of them (chips at the top,
   most recent first). Three tabs:
-  - **Images**: the selected one big with a strip of thumbnails. Open (Preview), Finder.
+  - **Images**: the selected one big with a strip of thumbnails. Open (Preview), Finder. Zoom
+    with `cmd`/`ctrl`-scroll, a pinch, double-click (fit ↔ the image's own pixels), `+` `-` `0`
+    or the − / Fit / + buttons; scroll or drag to move around a zoomed image.
   - **Files**: one row per file (new, edited, or `N edits`), newest first, with a read-only
     preview that reloads when the agent edits it again (Markdown rendered). **Open beside**
     splits a live view of the file as a pane next to the agent; Open, Finder.
   - **Links**: PRs, issues, artifacts, Jira tickets, docs… Click to open in the browser.
 
-  Keys: `1` `2` `3` tabs, `←` `→` images, `↑` `↓` files and links, `Enter` opens, `Esc` closes.
+  Keys: `1` `2` `3` tabs, `←` `→` images, `+` `-` `0` zoom, `↑` `↓` files and links, `Enter` opens, `Esc` closes.
   It opens on the focused agent. Ways to open it:
   - `cmd-shift-r` (bound in `keys.json`, below), or the palette's `mod.open shot-preview`;
   - the layers icon in an agent pane's header (hover it), with the `resources-pane` header;

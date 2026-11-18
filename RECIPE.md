@@ -34,8 +34,9 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   - Tab row, 28px: "Images N", "Files N", "Links N" (26px high, rounded 6, the active one
     `t.selected` and medium weight), and on the right "Go to agent" when one live agent is
     selected. Then a 1px `t.border` rule.
-  - **Images**: the original path (`t.muted`) with Open and Finder buttons; the selected image as
-    large as fits, centered; a meta line (who · tool · size · ago, `t.dim`); a strip of 96×64
+  - **Images**: the original path (`t.muted`) with a zoom control (−, the level, +: "Fit" in
+    `t.dim`, or the percent of the image's own pixels) and Open and Finder buttons; the selected
+    image as large as fits, centered, clipped to its box when zoomed; a meta line (who · tool · size · ago, `t.dim`); a strip of 96×64
     thumbnails that scrolls sideways, the selected one with a 2px `t.accent` border.
   - **Files**: a 320px list on the left, scrolling. Each row has the file name, a badge (`new` in
     `t.ansi2`, `edited`, or `N edits` in `t.dim`) and how long ago. Under it, the folder relative
@@ -67,7 +68,13 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   terminal, else "All agents" when that agent produced nothing. The tab is the one asked for,
   else the first one that isn't empty. Clicking a chip switches agents and picks the tab again.
 - Keys (the panel takes focus when it opens): `1` `2` `3` switch tabs, `Esc` closes.
-  - Images: `←` newer, `→` older, `Enter` opens it.
+  - Images: `←` newer, `→` older, `Enter` opens it, `+` `-` zoom around the middle, `0` back to
+    fit.
+
+  Zoom (Images, up to 4× the image's own pixels): `cmd`- or `ctrl`-scroll and a trackpad pinch
+  zoom around the pointer; double-click toggles fit ↔ the image's own pixels (2× when it already
+  shows at those); clicking the level goes back to fit. A zoomed image pans with a plain scroll
+  or by dragging (grab cursor), never past its edges. Another image starts at fit.
   - Files: `↑` `↓` move, `Enter` = Open beside.
   - Links: `↑` `↓` move, `Enter` opens it in the browser.
 
