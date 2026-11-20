@@ -20,7 +20,11 @@ artifacts, Jira tickets…).
     splits a live view of the file as a pane next to the agent; Open, Finder.
   - **Links**: PRs, issues, artifacts, Jira tickets, docs… Click to open in the browser.
 
-  Keys: `1` `2` `3` tabs, `←` `→` images, `+` `-` `0` zoom, `↑` `↓` files and links, `Enter` opens, `Esc` closes.
+  **Clear** (with one agent selected) forgets it: its image copies are deleted and its lines
+  dropped from both feeds. The files it wrote stay. For 8 s a bar offers **Undo** (`cmd-z`);
+  the deletion happens after that, on another clear, or when the panel closes.
+
+  Keys: `1` `2` `3` tabs, `←` `→` images, `+` `-` `0` zoom, `↑` `↓` files and links, `Enter` opens, `cmd-z` undoes a clear, `Esc` closes.
   It opens on the focused agent. Ways to open it:
   - `cmd-shift-r` (bound in `keys.json`, below), or the palette's `mod.open shot-preview`;
   - the layers icon in an agent pane's header (hover it), with the `resources-pane` header;

@@ -32,8 +32,8 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
     links, 11px, `t.dim`). An agent whose terminal is gone shows its folder's name and
     "(closed)". The selected chip has a `t.accent` border and a `t.selected` background.
   - Tab row, 28px: "Images N", "Files N", "Links N" (26px high, rounded 6, the active one
-    `t.selected` and medium weight), and on the right "Go to agent" when one live agent is
-    selected. Then a 1px `t.border` rule.
+    `t.selected` and medium weight), and on the right "Clear" when one agent is selected and
+    "Go to agent" when it is live. Then a 1px `t.border` rule.
   - **Images**: the original path (`t.muted`) with a zoom control (−, the level, +: "Fit" in
     `t.dim`, or the percent of the image's own pixels) and Open and Finder buttons; the selected
     image as large as fits, centered, clipped to its box when zoomed; a meta line (who · tool · size · ago, `t.dim`); a strip of 96×64
@@ -50,6 +50,8 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
     Release, Gist, Link), then the title (or the URL), a second line with the agent and URL in
     `t.dim`, and how long ago.
   - Empty tabs say what will show up there, centered, in `t.dim`.
+  - After a clear, a 32px bar at the bottom (`t.selected`, rounded 6): "Cleared <agent>: N
+    images, N files, N links." and an Undo button.
 - **File pane**: a pane (made by Open beside) with the file's path, Open and Finder, over the
   same preview, on `t.background`.
 - **Pane header**: Herdr's shipped `pane` header plus one 14px layers icon (`resources.svg`,
@@ -79,6 +81,14 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   - Links: `↑` `↓` move, `Enter` opens it in the browser.
 
   Clicking a link opens it.
+- Clear forgets the selected agent's entries up to now (newer ones still show): it is hidden
+  at once and the panel goes to "All agents". Undo (or `cmd-z`) brings it back and selects it.
+  After 8s, on another clear, or when the panel closes (`close()`), the clear is applied: its
+  image copies are deleted (unless another line names them) and its lines are dropped from
+  `feed.jsonl` and `resources.jsonl`, keeping lines it can't parse. The files the agent wrote
+  are never touched.
+- The card pops up only for an image it hasn't seen (after a clear, an older one comes back on
+  top), and hides when its image leaves the feed.
 - Everything is live: the panel and card re-read the feeds when the folder changes. The Files
   preview reloads when the agent touches the selected file again; the file pane reloads when the
   file changes on disk.
@@ -160,6 +170,9 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   and `.h_full()` on both columns, or the preview collapses into the middle.
 - Don't name a method `close` on the View: it's the lifecycle hook (`async close(cx)`), where
   the `EditorState` is released.
+- The hook appends to the feeds while the panel rewrites them: the panel writes with
+  `writeTextFile(path, text, expected)`, which rejects a stale snapshot, and reads again (up to
+  5 tries, then an error toast).
 - `watchFolder` reports a whole folder. The file pane watches the file's parent and reloads only
   when the changed paths include the file (or the folder itself).
 - `readTextFile` stops at 1 MiB. Larger or binary files show a message instead of a preview.

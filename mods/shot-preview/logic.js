@@ -112,6 +112,35 @@ export function parseResources(text) {
 /** Whether an entry belongs to the chosen agent ("all", or a terminal address). */
 export const ofAgent = (sel) => (e) => sel === "all" || e.terminal === sel;
 
+// ---- clearing an agent -----------------------------------------------------------------------
+// A clear is { terminal, at }: that agent's entries up to `at`. Newer ones still show.
+
+/** Whether an entry survives the clears. */
+export const notCleared = (clears) => (e) => !clears.some((c) => e.terminal === c.terminal && (e.at ?? 0) <= c.at);
+
+/**
+ * A feed's text without a clear's lines. Lines it can't parse stay as they are. Returns the new
+ * text, the dropped entries and, for feed.jsonl, the image copies no kept line names.
+ */
+export function dropCleared(text, clear) {
+  const kept = [];
+  const dropped = [];
+  for (const line of (text ?? "").split("\n")) {
+    if (!line.trim()) continue;
+    let e = null;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      // keep it
+    }
+    if (e && !notCleared([clear])(e)) dropped.push(e);
+    else kept.push({ line, name: e?.name });
+  }
+  const still = new Set(kept.map((k) => k.name));
+  const images = [...new Set(dropped.map((e) => e.name))].filter((n) => typeof n === "string" && /^[\w.-]+$/.test(n) && !still.has(n));
+  return { text: kept.length > 0 ? `${kept.map((k) => k.line).join("\n")}\n` : "", dropped, images };
+}
+
 /**
  * Files, one row per path (newest first): created if any write made it, how many times it was
  * edited, when last, and by whom (the latest entry's terminal and folder).

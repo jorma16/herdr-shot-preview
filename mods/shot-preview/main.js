@@ -12,7 +12,7 @@ import { appHome, props, readTextFile, watchFolder } from "herdr";
 import * as fs from "fs/promises";
 import { parseFeed, parseResources } from "./logic.js";
 import { initCard, onNewImage, renderCard } from "./card.js";
-import { initPanel, onData, renderPanel } from "./panel.js";
+import { initPanel, onData, renderPanel, commitClear } from "./panel.js";
 import { initViewer, renderViewer } from "./viewer.js";
 
 
@@ -47,7 +47,9 @@ export default class ShotPreview extends View {
     const images = parseFeed(feed);
     const first = !this.loaded;
     const top = images[0] ?? null;
-    if (this.mode === "card" && !first && top && top.name !== this.images[0]?.name) onNewImage(this, top);
+    // New means never seen: after a clear, an older image comes back on top.
+    if (this.mode === "card" && !first && top && !this.images.some((e) => e.name === top.name)) onNewImage(this, top);
+    if (this.mode === "card" && this.shown && !images.some((e) => e.name === this.shown.name)) this.shown = null;
     this.images = images;
     this.res = parseResources(res);
     this.loaded = true;
@@ -63,5 +65,6 @@ export default class ShotPreview extends View {
 
   async close() {
     this.code?.release();
+    if (this.mode === "panel") await commitClear(this);
   }
 }

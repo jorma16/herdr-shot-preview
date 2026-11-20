@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseFeed, fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown } from "../mods/shot-preview/logic.js";
+import { parseFeed, fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, notCleared, dropCleared } from "../mods/shot-preview/logic.js";
 
 test("parseFeed: newest first, unsafe names and broken lines out", () => {
   const text = '{"name":"a.png"}\n{"name":"../x.png"}\n{bad\n{"name":"b.png"}\n';
@@ -120,4 +120,31 @@ test("relPath, languageOf, isMarkdown", () => {
   assert.equal(languageOf("/a/b.py"), "py");
   assert.equal(languageOf("/a/Makefile"), "txt");
   assert.equal(isMarkdown("/a/README.md"), true);
+});
+
+test("notCleared hides an agent's entries up to the clear, not later ones or others'", () => {
+  const keep = notCleared([{ terminal: "t1", at: 100 }]);
+  assert.equal(keep({ terminal: "t1", at: 100 }), false);
+  assert.equal(keep({ terminal: "t1", at: 101 }), true);
+  assert.equal(keep({ terminal: "t2", at: 50 }), true);
+  assert.equal(keep({ at: 50 }), true);
+  assert.equal(notCleared([])({ terminal: "t1", at: 1 }), true);
+});
+
+test("dropCleared drops the agent's lines, keeps the rest verbatim, lists copies to delete", () => {
+  const text = [
+    '{"name":"a.png","terminal":"t1","at":10}',
+    '{"name":"b.png","terminal":"t2","at":20}',
+    "{half",
+    '{"name":"c.png","terminal":"t1","at":30}',
+    '{"name":"../x.png","terminal":"t1","at":5}',
+    '{"name":"d.png","terminal":"t1","at":99}',
+    "",
+  ].join("\n");
+  const r = dropCleared(text, { terminal: "t1", at: 50 });
+  assert.equal(r.text, '{"name":"b.png","terminal":"t2","at":20}\n{half\n{"name":"d.png","terminal":"t1","at":99}\n');
+  assert.deepEqual(r.dropped.map((e) => e.name), ["a.png", "c.png", "../x.png"]);
+  assert.deepEqual(r.images, ["a.png", "c.png"]);
+  assert.equal(dropCleared('{"kind":"file","terminal":"t1","at":1}\n', { terminal: "t1", at: 5 }).text, "");
+  assert.deepEqual(dropCleared(null, { terminal: "t1", at: 5 }), { text: "", dropped: [], images: [] });
 });

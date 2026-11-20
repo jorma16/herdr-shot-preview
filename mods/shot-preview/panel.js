@@ -3,12 +3,15 @@
 //   Files: the files written or edited, with a live read-only preview.
 //   Links: PRs, issues, artifacts, Jira tickets… opened in the browser.
 // Keys: 1/2/3 tabs; ←/→ images, +/-/0 zoom; ↑/↓ files and links; Enter opens; Esc closes.
+// Clear forgets the selected agent: its image copies are deleted and its lines dropped from the
+// feeds, once Undo (cmd-z) is no longer offered.
 // Zoom: cmd- or ctrl-scroll, pinch, or double-click; scroll or drag to pan a zoomed image.
 
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState, TextView } from "gpui-base";
-import { agents, closeOverlay, focused, home, props, readTextFile, run, settings, theme } from "herdr";
-import { fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
+import { agents, closeOverlay, focused, home, notify, props, readTextFile, run, settings, theme, writeTextFile } from "herdr";
+import * as fs from "fs/promises";
+import { fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, notCleared, dropCleared, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
 import { iconButton, textButton, open } from "./ui.js";
 
 const DIR = "shot-preview";
@@ -17,6 +20,7 @@ const THUMB_W = 96;
 const THUMB_H = 64;
 const MAX_CHIPS = 8;
 const ZOOM_STEP = 1.25;
+const UNDO_MS = 8000;
 
 export function initPanel(v, cx, p) {
   // The agent to show: given, else the focused terminal; "all" if it produced nothing.
@@ -33,22 +37,36 @@ export function initPanel(v, cx, p) {
   v.view = null; // the big image's box, measured
   v.zoom = null; // { name, z, x, y } for the image it was set on; anything else is at fit
   v.drag = null; // the last pointer position while dragging a zoomed image
+  v.clears = []; // agents cleared while open ({ terminal, at }), hidden from the feeds read
+  v.undo = null; // { clear, label, counts } while Undo is offered; its files aren't touched yet
   v.handle = cx.focus_handle();
   const focus = () => v.handle.focus();
   focus();
   cx.timer.after(200, focus);
 }
 
+// The feeds minus the cleared agents.
+const visible = (v) => {
+  const keep = notCleared(v.clears);
+  return { images: v.images.filter(keep), res: v.res.filter(keep) };
+};
+
 const data = (v) => {
+  const { images, res } = visible(v);
   const mine = ofAgent(v.agent);
-  const res = v.res.filter(mine);
-  return { images: v.images.filter(mine), files: fileRows(res), links: linkRows(res) };
+  const own = res.filter(mine);
+  return { images: images.filter(mine), files: fileRows(own), links: linkRows(own) };
+};
+
+const agentsWithData = (v) => {
+  const { images, res } = visible(v);
+  return producers(images, res);
 };
 
 // After each read: settle the agent and tab on the first, keep the file preview live.
 export function onData(v, cx, first) {
   if (first) {
-    if (v.agent !== "all" && !producers(v.images, v.res).some((p) => p.terminal === v.agent)) v.agent = "all";
+    if (v.agent !== "all" && !agentsWithData(v).some((p) => p.terminal === v.agent)) v.agent = "all";
     if (!v.tab) pickTab(v);
   }
   if (v.tab === "files") syncFile(v, cx);
@@ -130,6 +148,7 @@ function onKey(v, ev, cx) {
   const d = data(v);
   const k = ev.key;
   if (k === "escape") return dismiss();
+  if (ev.keystroke === "cmd-z") return undoClear(v, cx);
   if (k === "1" || k === "2" || k === "3") return setTab(v, TABS[Number(k) - 1], cx);
   if (v.tab === "images" && d.images.length > 0) {
     const i = indexOf(d.images, v.sel);
@@ -162,6 +181,70 @@ function openBeside(row) {
   run("pane.split", { direction: "right", ...(pane ? { pane } : {}), mod: "shot-preview", props: { file: row.path } });
 }
 
+// ---- clearing an agent ----------------------------------------------------------------------
+// Clear hides the agent at once and offers Undo. Its image copies and feed lines go when Undo
+// is no longer offered: UNDO_MS later, on another clear, or when the panel closes.
+
+function clearAgent(v, cx) {
+  if (v.agent === "all") return;
+  const p = agentsWithData(v).find((x) => x.terminal === v.agent);
+  flushClear(v, cx);
+  const clear = { terminal: v.agent, at: Date.now() };
+  const u = { clear, label: p ? agentLabel(p, agents()).label : v.agent, counts: p ?? { images: 0, files: 0, links: 0 } };
+  v.clears.push(clear);
+  v.undo = u;
+  setAgent(v, "all", cx);
+  v.timer.after(UNDO_MS, (cx) => {
+    if (v.undo === u) flushClear(v, cx);
+  });
+}
+
+function undoClear(v, cx) {
+  const u = v.undo;
+  if (!u) return;
+  v.undo = null;
+  v.clears = v.clears.filter((c) => c !== u.clear);
+  setAgent(v, u.clear.terminal, cx);
+}
+
+function flushClear(v, cx) {
+  if (!v.undo) return;
+  cx.spawn(async (cx) => {
+    await commitClear(v);
+    cx.notify();
+  });
+}
+
+/** Deletes the pending clear's image copies and drops its lines from both feeds. */
+export async function commitClear(v) {
+  const u = v.undo;
+  if (!u) return;
+  v.undo = null;
+  try {
+    const feed = await dropFrom(`${v.dir}/feed.jsonl`, u.clear);
+    await Promise.all(feed.images.map((name) => fs.unlink(`${v.dir}/${name}`).catch(() => null)));
+    await dropFrom(`${v.dir}/resources.jsonl`, u.clear);
+  } catch (e) {
+    notify({ title: `Couldn't clear ${u.label}`, body: String(e?.message ?? e), level: "error" });
+  }
+}
+
+// Rewrites a feed without the clear's lines. If the hook appended meanwhile, writeTextFile
+// rejects the stale snapshot and it reads again.
+async function dropFrom(path, clear) {
+  for (let i = 0; ; i++) {
+    const text = await readTextFile(path);
+    const r = dropCleared(text, clear);
+    if (text === null || r.dropped.length === 0) return r;
+    try {
+      await writeTextFile(path, r.text, text);
+      return r;
+    } catch (e) {
+      if (i >= 4) throw e;
+    }
+  }
+}
+
 // ---- drawing ---------------------------------------------------------------------------------
 
 export function renderPanel(v) {
@@ -180,16 +263,35 @@ export function renderPanel(v) {
     .child(h_flex().h(28).flex_none().gap(4).items_center()
       .children(TABS.map((k, i) => tabButton(v, t, k, `${["Images", "Files", "Links"][i]} ${d[k].length}`)))
       .child(div().flex_1())
+      .when(v.agent !== "all", (el) => el.child(textButton(t, "sp-clear", "Clear",
+        "Delete this agent's image copies and forget its files and links (the files themselves stay)", (cx) => clearAgent(v, cx))))
       .when(Boolean(live_agent), (el) => el.child(textButton(t, "sp-goto", "Go to agent", "Focus this agent's terminal", () => {
         dismiss();
         run("agent.focus", { terminal: live_agent.address });
       }))))
     .child(div().h(1).flex_none().bg(t.border))
-    .child(v.tab === "files" ? filesTab(v, t, d.files) : v.tab === "links" ? linksTab(v, t, d.links) : imagesTab(v, t, d.images));
+    .child(v.tab === "files" ? filesTab(v, t, d.files) : v.tab === "links" ? linksTab(v, t, d.links) : imagesTab(v, t, d.images))
+    .when(Boolean(v.undo), (el) => el.child(undoBar(v, t)));
+}
+
+const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function undoBar(v, t) {
+  const { label, counts: c } = v.undo;
+  const what = [count(c.images, "image"), count(c.files, "file"), count(c.links, "link")].join(", ");
+  return h_flex().h(32).flex_none().px(10).gap(8).items_center().rounded(6).bg(t.selected)
+    .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(`Cleared ${label}: ${what}.`))
+    .child(textButton(t, "sp-undo", "Undo", "Bring them back (cmd-z)", (cx) => undoClear(v, cx)));
+}
+
+// A chip's label: the agent's, else its folder's name and "(closed)".
+function agentLabel(p, live) {
+  const { agent, text } = whoTook({ terminal: p.terminal, cwd: p.cwd }, live, home());
+  return { agent, text, label: agent ? text : `${baseName(p.cwd ?? "") || p.terminal} (closed)` };
 }
 
 function header(v, t, live) {
-  const list = producers(v.images, v.res).slice(0, MAX_CHIPS);
+  const list = agentsWithData(v).slice(0, MAX_CHIPS);
   const chip = (id, label, tip, count, selected) => h_flex().id(`sp-chip-${id}`).flex_none().h(24).px(8).gap(5).items_center().rounded(12)
     .border(1).border_color(selected ? t.accent : t.border).cursor_pointer().tooltip(tip)
     .when(selected, (c) => c.bg(t.selected))
@@ -198,9 +300,9 @@ function header(v, t, live) {
     .child(div().max_w(200).truncate().text_color(selected ? t.foreground : t.muted).child(label))
     .when(count !== null, (c) => c.child(div().text_size(11).text_color(t.dim).child(String(count))));
   const chips = list.map((p) => {
-    const { agent, text } = whoTook({ terminal: p.terminal, cwd: p.cwd }, live, home());
+    const { agent, text, label } = agentLabel(p, live);
     const tip = `${text}${agent ? "" : " (closed)"} · ${p.images} images, ${p.files} files, ${p.links} links`;
-    return chip(p.terminal, agent ? text : `${baseName(p.cwd ?? "") || p.terminal} (closed)`, tip, p.images + p.files + p.links, v.agent === p.terminal);
+    return chip(p.terminal, label, tip, p.images + p.files + p.links, v.agent === p.terminal);
   });
   return h_flex().h(28).flex_none().gap(8).items_center()
     .child(div().flex_none().font_semibold().text_size(13).child("Resources"))
