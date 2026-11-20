@@ -34,9 +34,13 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
     gone shows its folder's name in `t.dim`, a hollow `t.dim` ring and a dashed border; its
     tooltip says "(closed)". The selected chip has a `t.accent` border and a `t.selected`
     background.
+  - Legend, 22px, text 11.5px: "Agents" (or "Showing" while filtering) in `t.dim`, then one
+    toggle per state some agent is in (Working, Blocked, Done, Idle, No status, Closed), each
+    with its dot, label and count. An active one has a `t.accent` border and a `t.selected`
+    background; then "Show all".
   - Tab row, 28px: "Images N", "Files N", "Links N" (26px high, rounded 6, the active one
-    `t.selected` and medium weight), and on the right "Clear" when one agent is selected and
-    "Go to agent" when it is live. Then a 1px `t.border` rule.
+    `t.selected` and medium weight), and on the right "Clear" when one agent is selected ("Clear
+    N agents" with "All agents") and "Go to agent" when it is live. Then a 1px `t.border` rule.
   - **Images**: the original path (`t.muted`) with a zoom control (−, the level, +: "Fit" in
     `t.dim`, or the percent of the image's own pixels) and Open and Finder buttons; the selected
     image as large as fits, centered, clipped to its box when zoomed; a meta line (who · tool · size · ago, `t.dim`); a strip of 96×64
@@ -84,8 +88,13 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   - Links: `↑` `↓` move, `Enter` opens it in the browser.
 
   Clicking a link opens it.
-- Clear forgets the selected agent's entries up to now (newer ones still show): it is hidden
-  at once and the panel goes to "All agents". Undo (or `cmd-z`) brings it back and selects it.
+- The legend is a filter: clicking a state toggles it, and while any is on, the chips and
+  "All agents" (its tabs and counts) show only agents in those states; a selected agent that
+  drops out goes back to "All agents". The filter lasts while the panel is open.
+- Clear forgets the selected agent's entries up to now (newer ones still show), and with "All
+  agents" those of every agent the filter shows (all of them with no filter; entries with no
+  terminal are left). They're hidden at once and the panel goes to "All agents". Undo (or
+  `cmd-z`) brings them all back and reselects what was selected.
   After 8s, on another clear, or when the panel closes (`close()`), the clear is applied: its
   image copies are deleted (unless another line names them) and its lines are dropped from
   `feed.jsonl` and `resources.jsonl`, keeping lines it can't parse. The files the agent wrote
@@ -97,7 +106,7 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   file changes on disk.
 - Open beside closes the panel and runs `pane.split` (direction `right`) on the agent's pane
   (the focused one if the agent is gone) with this mod and `props: { file }`.
-- Agent status (working, blocked, done, idle) shows only as the chips' dots, live. The pane
+- Agent status (working, blocked, done, idle) shows only as the chips' dots and the legend, live. The pane
   header keeps the shipped one's status marks.
 
 ## Built from

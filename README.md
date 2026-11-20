@@ -21,10 +21,13 @@ artifacts, Jira tickets…).
   - **Links**: PRs, issues, artifacts, Jira tickets, docs… Click to open in the browser.
 
   Each agent chip has a dot in the agent's status color (working, blocked, done, idle); an
-  agent whose terminal is closed shows a hollow ring, a dashed border and dimmed text.
+  agent whose terminal is closed shows a hollow ring, a dashed border and dimmed text. Under
+  the chips, a legend counts the agents in each state; click a state to filter the chips and
+  "All agents" by it (several can be on; **Show all** turns the filter off).
 
-  **Clear** (with one agent selected) forgets it: its image copies are deleted and its lines
-  dropped from both feeds. The files it wrote stay. For 8 s a bar offers **Undo** (`cmd-z`);
+  **Clear** forgets the selected agent, and with "All agents" **Clear N agents** forgets every
+  agent the filter shows (e.g. filter by Closed to clean up old ones): their image copies are
+  deleted and their lines dropped from both feeds. The files it wrote stay. For 8 s a bar offers **Undo** (`cmd-z`);
   the deletion happens after that, on another clear, or when the panel closes.
 
   Keys: `1` `2` `3` tabs, `←` `→` images, `+` `-` `0` zoom, `↑` `↓` files and links, `Enter` opens, `cmd-z` undoes a clear, `Esc` closes.

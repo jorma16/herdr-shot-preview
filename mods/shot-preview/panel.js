@@ -3,15 +3,16 @@
 //   Files: the files written or edited, with a live read-only preview.
 //   Links: PRs, issues, artifacts, Jira tickets… opened in the browser.
 // Keys: 1/2/3 tabs; ←/→ images, +/-/0 zoom; ↑/↓ files and links; Enter opens; Esc closes.
-// Clear forgets the selected agent: its image copies are deleted and its lines dropped from the
-// feeds, once Undo (cmd-z) is no longer offered.
+// A legend of agent states (live status, or closed) doubles as a filter for the chips and "All
+// agents". Clear forgets the selected agent, or with "All agents" every agent the filter shows:
+// image copies deleted, lines dropped from the feeds, once Undo (cmd-z) is no longer offered.
 // Zoom: cmd- or ctrl-scroll, pinch, or double-click; scroll or drag to pan a zoomed image.
 
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState, TextView } from "gpui-base";
 import { agents, closeOverlay, focused, home, notify, props, readTextFile, run, settings, theme, writeTextFile } from "herdr";
 import * as fs from "fs/promises";
-import { fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, notCleared, dropCleared, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
+import { fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, baseName, shortPath, whoTook, indexOf, ofAgent, notCleared, dropCleared, stateOf, legend, byState, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, LINK_LABEL } from "./logic.js";
 import { iconButton, textButton, open } from "./ui.js";
 
 const DIR = "shot-preview";
@@ -37,8 +38,9 @@ export function initPanel(v, cx, p) {
   v.view = null; // the big image's box, measured
   v.zoom = null; // { name, z, x, y } for the image it was set on; anything else is at fit
   v.drag = null; // the last pointer position while dragging a zoomed image
+  v.filter = new Set(); // agent states shown (STATES); empty shows every agent
   v.clears = []; // agents cleared while open ({ terminal, at }), hidden from the feeds read
-  v.undo = null; // { clear, label, counts } while Undo is offered; its files aren't touched yet
+  v.undo = null; // { clears, label, counts, back } while Undo is offered; files not touched yet
   v.handle = cx.focus_handle();
   const focus = () => v.handle.focus();
   focus();
@@ -53,7 +55,11 @@ const visible = (v) => {
 
 const data = (v) => {
   const { images, res } = visible(v);
-  const mine = ofAgent(v.agent);
+  let mine = ofAgent(v.agent);
+  if (v.agent === "all" && v.filter.size > 0) {
+    const shown = new Set(shownAgents(v).map((p) => p.terminal));
+    mine = (e) => shown.has(e.terminal);
+  }
   const own = res.filter(mine);
   return { images: images.filter(mine), files: fileRows(own), links: linkRows(own) };
 };
@@ -62,6 +68,9 @@ const agentsWithData = (v) => {
   const { images, res } = visible(v);
   return producers(images, res);
 };
+
+// The agents the state filter lets through, most recent first.
+const shownAgents = (v) => byState(agentsWithData(v), agents(), v.filter);
 
 // After each read: settle the agent and tab on the first, keep the file preview live.
 export function onData(v, cx, first) {
@@ -144,6 +153,13 @@ function setAgent(v, agent, cx) {
   cx.notify();
 }
 
+function toggleState(v, state, cx) {
+  if (v.filter.has(state)) v.filter.delete(state);
+  else v.filter.add(state);
+  const keep = v.agent !== "all" && shownAgents(v).some((p) => p.terminal === v.agent);
+  setAgent(v, keep ? v.agent : "all", cx);
+}
+
 function onKey(v, ev, cx) {
   const d = data(v);
   const k = ev.key;
@@ -181,17 +197,24 @@ function openBeside(row) {
   run("pane.split", { direction: "right", ...(pane ? { pane } : {}), mod: "shot-preview", props: { file: row.path } });
 }
 
-// ---- clearing an agent ----------------------------------------------------------------------
-// Clear hides the agent at once and offers Undo. Its image copies and feed lines go when Undo
+// ---- clearing agents -------------------------------------------------------------------------
+// Clear hides the agents at once and offers Undo. Their image copies and feed lines go when Undo
 // is no longer offered: UNDO_MS later, on another clear, or when the panel closes.
 
-function clearAgent(v, cx) {
-  if (v.agent === "all") return;
-  const p = agentsWithData(v).find((x) => x.terminal === v.agent);
+// The agents Clear acts on: the selected one, or with "All agents" every one the filter shows.
+const toClear = (v) => (v.agent === "all" ? shownAgents(v) : agentsWithData(v).filter((p) => p.terminal === v.agent));
+
+function clearAgents(v, cx) {
+  const list = toClear(v);
+  if (list.length === 0) return;
   flushClear(v, cx);
-  const clear = { terminal: v.agent, at: Date.now() };
-  const u = { clear, label: p ? agentLabel(p, agents()).label : v.agent, counts: p ?? { images: 0, files: 0, links: 0 } };
-  v.clears.push(clear);
+  const at = Date.now();
+  const clears = list.map((p) => ({ terminal: p.terminal, at }));
+  const counts = { images: 0, files: 0, links: 0 };
+  for (const p of list) for (const k of Object.keys(counts)) counts[k] += p[k];
+  const label = list.length === 1 ? agentLabel(list[0], agents()).label : count(list.length, "agent");
+  const u = { clears, label, counts, back: v.agent };
+  v.clears.push(...clears);
   v.undo = u;
   setAgent(v, "all", cx);
   v.timer.after(UNDO_MS, (cx) => {
@@ -203,8 +226,8 @@ function undoClear(v, cx) {
   const u = v.undo;
   if (!u) return;
   v.undo = null;
-  v.clears = v.clears.filter((c) => c !== u.clear);
-  setAgent(v, u.clear.terminal, cx);
+  v.clears = v.clears.filter((c) => !u.clears.includes(c));
+  setAgent(v, u.back, cx);
 }
 
 function flushClear(v, cx) {
@@ -221,20 +244,20 @@ export async function commitClear(v) {
   if (!u) return;
   v.undo = null;
   try {
-    const feed = await dropFrom(`${v.dir}/feed.jsonl`, u.clear);
+    const feed = await dropFrom(`${v.dir}/feed.jsonl`, u.clears);
     await Promise.all(feed.images.map((name) => fs.unlink(`${v.dir}/${name}`).catch(() => null)));
-    await dropFrom(`${v.dir}/resources.jsonl`, u.clear);
+    await dropFrom(`${v.dir}/resources.jsonl`, u.clears);
   } catch (e) {
     notify({ title: `Couldn't clear ${u.label}`, body: String(e?.message ?? e), level: "error" });
   }
 }
 
-// Rewrites a feed without the clear's lines. If the hook appended meanwhile, writeTextFile
+// Rewrites a feed without the clears' lines. If the hook appended meanwhile, writeTextFile
 // rejects the stale snapshot and it reads again.
-async function dropFrom(path, clear) {
+async function dropFrom(path, clears) {
   for (let i = 0; ; i++) {
     const text = await readTextFile(path);
-    const r = dropCleared(text, clear);
+    const r = dropCleared(text, clears);
     if (text === null || r.dropped.length === 0) return r;
     try {
       await writeTextFile(path, r.text, text);
@@ -252,6 +275,7 @@ export function renderPanel(v) {
   const d = data(v);
   const live = agents();
   const live_agent = v.agent === "all" ? null : live.find((a) => a.address === v.agent) ?? null;
+  const clearing = toClear(v).length;
   return v_flex().id("sp-panel").size_full().p(12).gap(10).text_size(12).bg(t.popover).text_color(t.foreground)
     .track_focus(v.handle)
     .on_key_down((ev, cx) => onKey(v, ev, cx))
@@ -260,11 +284,16 @@ export function renderPanel(v) {
       cx.notify();
     })
     .child(header(v, t, live))
+    .child(legendRow(v, t, live))
     .child(h_flex().h(28).flex_none().gap(4).items_center()
       .children(TABS.map((k, i) => tabButton(v, t, k, `${["Images", "Files", "Links"][i]} ${d[k].length}`)))
       .child(div().flex_1())
-      .when(v.agent !== "all", (el) => el.child(textButton(t, "sp-clear", "Clear",
-        "Delete this agent's image copies and forget its files and links (the files themselves stay)", (cx) => clearAgent(v, cx))))
+      .when(clearing > 0, (el) => el.child(v.agent === "all"
+        ? textButton(t, "sp-clear", `Clear ${count(clearing, "agent")}`,
+          `${v.filter.size > 0 ? "Every agent the filter shows" : "Every agent"}: delete their image copies and forget their files and links (the files themselves stay)`,
+          (cx) => clearAgents(v, cx))
+        : textButton(t, "sp-clear", "Clear",
+          "Delete this agent's image copies and forget its files and links (the files themselves stay)", (cx) => clearAgents(v, cx))))
       .when(Boolean(live_agent), (el) => el.child(textButton(t, "sp-goto", "Go to agent", "Focus this agent's terminal", () => {
         dismiss();
         run("agent.focus", { terminal: live_agent.address });
@@ -291,35 +320,64 @@ function agentLabel(p, live) {
 }
 
 function header(v, t, live) {
-  const list = agentsWithData(v).slice(0, MAX_CHIPS);
-  // agent: undefined for "All agents", null when its terminal is gone (closed), else the live one.
-  const chip = (id, label, tip, count, selected, agent) => h_flex().id(`sp-chip-${id}`).flex_none().h(24).px(8).gap(5).items_center().rounded(12)
+  const list = shownAgents(v).slice(0, MAX_CHIPS);
+  // state: undefined for "All agents", else the agent's (STATES).
+  const chip = (id, label, tip, count, selected, state) => h_flex().id(`sp-chip-${id}`).flex_none().h(24).px(8).gap(5).items_center().rounded(12)
     .border(1).border_color(selected ? t.accent : t.border).cursor_pointer().tooltip(tip)
-    .when(agent === null, (c) => c.border_dashed())
+    .when(state === "closed", (c) => c.border_dashed())
     .when(selected, (c) => c.bg(t.selected))
     .when(!selected, (c) => c.hover((s) => s.bg(t.hover)))
     .on_click((_e, cx) => setAgent(v, id, cx))
-    .when(agent !== undefined, (c) => c.child(statusDot(t, agent)))
-    .child(div().max_w(200).truncate().text_color(agent === null ? t.dim : selected ? t.foreground : t.muted).child(label))
+    .when(state !== undefined, (c) => c.child(statusDot(t, state)))
+    .child(div().max_w(200).truncate().text_color(state === "closed" ? t.dim : selected ? t.foreground : t.muted).child(label))
     .when(count !== null, (c) => c.child(div().text_size(11).text_color(t.dim).child(String(count))));
   const chips = list.map((p) => {
     const { agent, text } = agentLabel(p, live);
-    const state = agent ? agent.status ?? "unknown" : "closed";
-    const tip = `${agent ? text : `${text} (closed)`} · ${state} · ${p.images} images, ${p.files} files, ${p.links} links`;
-    return chip(p.terminal, agent ? text : baseName(p.cwd ?? "") || p.terminal, tip, p.images + p.files + p.links, v.agent === p.terminal, agent);
+    const state = stateOf(p.terminal, live);
+    const tip = `${agent ? text : `${text} (closed)`} · ${STATE_LABEL[state].toLowerCase()} · ${p.images} images, ${p.files} files, ${p.links} links`;
+    return chip(p.terminal, agent ? text : baseName(p.cwd ?? "") || p.terminal, tip, p.images + p.files + p.links, v.agent === p.terminal, state);
   });
   return h_flex().h(28).flex_none().gap(8).items_center()
     .child(div().flex_none().font_semibold().text_size(13).child("Resources"))
     .child(h_flex().id("sp-chips").flex_1().min_w(0).gap(6).items_center().overflow_x_scroll()
-      .child(chip("all", "All agents", "Everything, from every agent", null, v.agent === "all"))
+      .child(chip("all", "All agents", v.filter.size > 0 ? "Everything from the agents the filter shows" : "Everything, from every agent", null, v.agent === "all"))
       .children(chips))
     .child(iconButton(t, "sp-close", "×", "Close (Esc)", () => dismiss()));
 }
 
+const STATE_LABEL = { working: "Working", blocked: "Blocked", done: "Done", idle: "Idle", unknown: "No status", closed: "Closed" };
+
 // A live agent: a dot in its status color, as Herdr marks it. A closed one: a hollow ring.
-function statusDot(t, agent) {
+function statusDot(t, state) {
   const dot = div().flex_none().w(7).h(7).rounded(4);
-  return agent ? dot.bg(t[agent.status] ?? t.unknown) : dot.border(1).border_color(t.dim);
+  return state === "closed" ? dot.border(1).border_color(t.dim) : dot.bg(t[state] ?? t.unknown);
+}
+
+// The legend: one toggle per state some agent is in (or that is on), with how many are.
+function legendRow(v, t, live) {
+  const items = legend(agentsWithData(v), live).filter((x) => x.n > 0 || v.filter.has(x.state));
+  const item = ({ state, n }) => {
+    const on = v.filter.has(state);
+    return h_flex().id(`sp-state-${state}`).flex_none().h(22).px(8).gap(5).items_center().rounded(11).cursor_pointer()
+      .border(1).border_color(on ? t.accent : "#00000000")
+      .tooltip(on ? `Stop filtering by ${STATE_LABEL[state].toLowerCase()}` : `Show ${STATE_LABEL[state].toLowerCase()} agents`)
+      .when(on, (el) => el.bg(t.selected))
+      .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .on_click((_e, cx) => toggleState(v, state, cx))
+      .child(statusDot(t, state))
+      .child(div().text_color(on ? t.foreground : t.muted).child(STATE_LABEL[state]))
+      .child(div().text_size(11).text_color(t.dim).child(String(n)));
+  };
+  return h_flex().h(22).flex_none().gap(4).items_center().text_size(11.5)
+    .child(div().flex_none().mr(4).text_color(t.dim).child(v.filter.size > 0 ? "Showing" : "Agents"))
+    .children(items.map(item))
+    .when(v.filter.size > 0, (el) => el.child(div().id("sp-state-reset").flex_none().ml(4).px(6).h(22).flex().items_center().rounded(5)
+      .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => {
+        v.filter.clear();
+        setAgent(v, v.agent, cx);
+      })
+      .child("Show all")));
 }
 
 function tabButton(v, t, key, label) {
@@ -413,7 +471,7 @@ function imagesTab(v, t, images) {
 // The big image's box (measured; a guess from the panel size until then), its fitted size and
 // how far it zooms.
 function geometry(v, e) {
-  const view = v.view ?? (v.size ? { w: v.size.width - 24, h: v.size.height - 24 - 28 - 28 - 1 - 24 - 20 - (THUMB_H + 4) - 50 } : { w: 600, h: 400 });
+  const view = v.view ?? (v.size ? { w: v.size.width - 24, h: v.size.height - 24 - 28 - 22 - 28 - 1 - 24 - 20 - (THUMB_H + 4) - 60 } : { w: 600, h: 400 });
   const base = fit(e.w, e.h, view.w, view.h, 1);
   return { view, base, max: maxZoom(base, e.w) };
 }

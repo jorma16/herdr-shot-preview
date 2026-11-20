@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseFeed, fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, notCleared, dropCleared } from "../mods/shot-preview/logic.js";
+import { parseFeed, fit, placeImage, maxZoom, zoomAround, panBy, ago, toolLabel, shortPath, whoTook, indexOf, parseResources, ofAgent, fileRows, linkRows, producers, relPath, languageOf, isMarkdown, notCleared, dropCleared, stateOf, legend, byState } from "../mods/shot-preview/logic.js";
 
 test("parseFeed: newest first, unsafe names and broken lines out", () => {
   const text = '{"name":"a.png"}\n{"name":"../x.png"}\n{bad\n{"name":"b.png"}\n';
@@ -141,10 +141,30 @@ test("dropCleared drops the agent's lines, keeps the rest verbatim, lists copies
     '{"name":"d.png","terminal":"t1","at":99}',
     "",
   ].join("\n");
-  const r = dropCleared(text, { terminal: "t1", at: 50 });
+  const r = dropCleared(text, [{ terminal: "t1", at: 50 }]);
   assert.equal(r.text, '{"name":"b.png","terminal":"t2","at":20}\n{half\n{"name":"d.png","terminal":"t1","at":99}\n');
   assert.deepEqual(r.dropped.map((e) => e.name), ["a.png", "c.png", "../x.png"]);
   assert.deepEqual(r.images, ["a.png", "c.png"]);
-  assert.equal(dropCleared('{"kind":"file","terminal":"t1","at":1}\n', { terminal: "t1", at: 5 }).text, "");
-  assert.deepEqual(dropCleared(null, { terminal: "t1", at: 5 }), { text: "", dropped: [], images: [] });
+  assert.equal(dropCleared('{"kind":"file","terminal":"t1","at":1}\n', [{ terminal: "t1", at: 5 }]).text, "");
+  assert.deepEqual(dropCleared(null, [{ terminal: "t1", at: 5 }]), { text: "", dropped: [], images: [] });
+});
+
+test("dropCleared takes several agents at once", () => {
+  const text = '{"name":"a.png","terminal":"t1","at":1}\n{"name":"b.png","terminal":"t2","at":1}\n{"name":"c.png","terminal":"t3","at":1}\n';
+  const r = dropCleared(text, [{ terminal: "t1", at: 5 }, { terminal: "t3", at: 5 }]);
+  assert.deepEqual(r.images, ["a.png", "c.png"]);
+  assert.equal(r.text, '{"name":"b.png","terminal":"t2","at":1}\n');
+});
+
+test("stateOf, legend and byState sort agents by live status or closed", () => {
+  const live = [{ address: "t1", status: "working" }, { address: "t2", status: null }, { address: "t3", status: "idle" }];
+  assert.equal(stateOf("t1", live), "working");
+  assert.equal(stateOf("t2", live), "unknown");
+  assert.equal(stateOf("t9", live), "closed");
+  const list = ["t1", "t2", "t3", "t8", "t9"].map((terminal) => ({ terminal }));
+  assert.deepEqual(legend(list, live).filter((x) => x.n > 0), [
+    { state: "working", n: 1 }, { state: "idle", n: 1 }, { state: "unknown", n: 1 }, { state: "closed", n: 2 },
+  ]);
+  assert.equal(byState(list, live, new Set()).length, 5);
+  assert.deepEqual(byState(list, live, new Set(["closed", "idle"])).map((p) => p.terminal), ["t3", "t8", "t9"]);
 });

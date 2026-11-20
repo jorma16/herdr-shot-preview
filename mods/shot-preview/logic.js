@@ -119,10 +119,11 @@ export const ofAgent = (sel) => (e) => sel === "all" || e.terminal === sel;
 export const notCleared = (clears) => (e) => !clears.some((c) => e.terminal === c.terminal && (e.at ?? 0) <= c.at);
 
 /**
- * A feed's text without a clear's lines. Lines it can't parse stay as they are. Returns the new
+ * A feed's text without the clears' lines. Lines it can't parse stay as they are. Returns the new
  * text, the dropped entries and, for feed.jsonl, the image copies no kept line names.
  */
-export function dropCleared(text, clear) {
+export function dropCleared(text, clears) {
+  const keep = notCleared(clears);
   const kept = [];
   const dropped = [];
   for (const line of (text ?? "").split("\n")) {
@@ -133,7 +134,7 @@ export function dropCleared(text, clear) {
     } catch {
       // keep it
     }
-    if (e && !notCleared([clear])(e)) dropped.push(e);
+    if (e && !keep(e)) dropped.push(e);
     else kept.push({ line, name: e?.name });
   }
   const still = new Set(kept.map((k) => k.name));
@@ -227,3 +228,24 @@ export function indexOf(entries, name) {
   const i = entries.findIndex((e) => e.name === name);
   return i < 0 ? 0 : i;
 }
+
+// ---- agent states ----------------------------------------------------------------------------
+
+/** What the legend lists, in order: Herdr's agent statuses, a live one without, a closed one. */
+export const STATES = ["working", "blocked", "done", "idle", "unknown", "closed"];
+
+/** An agent's state: its live status, "unknown" when live without one, "closed" when gone. */
+export function stateOf(terminal, agents) {
+  const a = agents.find((x) => x.address === terminal);
+  return a ? a.status ?? "unknown" : "closed";
+}
+
+/** How many of the agents (producers) are in each state, in STATES order: [{ state, n }]. */
+export function legend(list, agents) {
+  const n = Object.fromEntries(STATES.map((s) => [s, 0]));
+  for (const p of list) n[stateOf(p.terminal, agents)] += 1;
+  return STATES.map((state) => ({ state, n: n[state] }));
+}
+
+/** The agents a state filter (a Set; empty lets all through) lets through. */
+export const byState = (list, agents, filter) => (filter.size === 0 ? list : list.filter((p) => filter.has(stateOf(p.terminal, agents))));
