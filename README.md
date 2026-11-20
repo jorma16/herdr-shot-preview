@@ -20,6 +20,9 @@ artifacts, Jira tickets…).
     splits a live view of the file as a pane next to the agent; Open, Finder.
   - **Links**: PRs, issues, artifacts, Jira tickets, docs… Click to open in the browser.
 
+  Each agent chip has a dot in the agent's status color (working, blocked, done, idle); an
+  agent whose terminal is closed shows a hollow ring, a dashed border and dimmed text.
+
   **Clear** (with one agent selected) forgets it: its image copies are deleted and its lines
   dropped from both feeds. The files it wrote stay. For 8 s a bar offers **Undo** (`cmd-z`);
   the deletion happens after that, on another clear, or when the panel closes.

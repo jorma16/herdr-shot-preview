@@ -28,9 +28,12 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
 - **Resources panel**: a dialog, 0.85 × 0.85 of the window, `t.popover` background, `p 12`, text 12px.
   - Header, 28px: "Resources" (semibold, 13px), then the agent chips in a row that scrolls
     sideways, then `×`. Chips are 24px high and fully rounded, with a 1px border: "All agents",
-    then up to 8 agents, most recent first, each with its label and a count (images + files +
-    links, 11px, `t.dim`). An agent whose terminal is gone shows its folder's name and
-    "(closed)". The selected chip has a `t.accent` border and a `t.selected` background.
+    then up to 8 agents, most recent first, each with a 7px dot, its label and a count (images +
+    files + links, 11px, `t.dim`). A live agent's dot is filled with its status color
+    (`t.working`, `t.blocked`, `t.done`, `t.idle`, else `t.unknown`). An agent whose terminal is
+    gone shows its folder's name in `t.dim`, a hollow `t.dim` ring and a dashed border; its
+    tooltip says "(closed)". The selected chip has a `t.accent` border and a `t.selected`
+    background.
   - Tab row, 28px: "Images N", "Files N", "Links N" (26px high, rounded 6, the active one
     `t.selected` and medium weight), and on the right "Clear" when one agent is selected and
     "Go to agent" when it is live. Then a 1px `t.border` rule.
@@ -94,7 +97,7 @@ nothing to show, and it has to be added to Claude Code's settings by hand.
   file changes on disk.
 - Open beside closes the panel and runs `pane.split` (direction `right`) on the agent's pane
   (the focused one if the agent is gone) with this mod and `props: { file }`.
-- Agent status (working, blocked, done, idle) doesn't change the card or the panel. The pane
+- Agent status (working, blocked, done, idle) shows only as the chips' dots, live. The pane
   header keeps the shipped one's status marks.
 
 ## Built from

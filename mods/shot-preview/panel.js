@@ -292,17 +292,21 @@ function agentLabel(p, live) {
 
 function header(v, t, live) {
   const list = agentsWithData(v).slice(0, MAX_CHIPS);
-  const chip = (id, label, tip, count, selected) => h_flex().id(`sp-chip-${id}`).flex_none().h(24).px(8).gap(5).items_center().rounded(12)
+  // agent: undefined for "All agents", null when its terminal is gone (closed), else the live one.
+  const chip = (id, label, tip, count, selected, agent) => h_flex().id(`sp-chip-${id}`).flex_none().h(24).px(8).gap(5).items_center().rounded(12)
     .border(1).border_color(selected ? t.accent : t.border).cursor_pointer().tooltip(tip)
+    .when(agent === null, (c) => c.border_dashed())
     .when(selected, (c) => c.bg(t.selected))
     .when(!selected, (c) => c.hover((s) => s.bg(t.hover)))
     .on_click((_e, cx) => setAgent(v, id, cx))
-    .child(div().max_w(200).truncate().text_color(selected ? t.foreground : t.muted).child(label))
+    .when(agent !== undefined, (c) => c.child(statusDot(t, agent)))
+    .child(div().max_w(200).truncate().text_color(agent === null ? t.dim : selected ? t.foreground : t.muted).child(label))
     .when(count !== null, (c) => c.child(div().text_size(11).text_color(t.dim).child(String(count))));
   const chips = list.map((p) => {
-    const { agent, text, label } = agentLabel(p, live);
-    const tip = `${text}${agent ? "" : " (closed)"} · ${p.images} images, ${p.files} files, ${p.links} links`;
-    return chip(p.terminal, label, tip, p.images + p.files + p.links, v.agent === p.terminal);
+    const { agent, text } = agentLabel(p, live);
+    const state = agent ? agent.status ?? "unknown" : "closed";
+    const tip = `${agent ? text : `${text} (closed)`} · ${state} · ${p.images} images, ${p.files} files, ${p.links} links`;
+    return chip(p.terminal, agent ? text : baseName(p.cwd ?? "") || p.terminal, tip, p.images + p.files + p.links, v.agent === p.terminal, agent);
   });
   return h_flex().h(28).flex_none().gap(8).items_center()
     .child(div().flex_none().font_semibold().text_size(13).child("Resources"))
@@ -310,6 +314,12 @@ function header(v, t, live) {
       .child(chip("all", "All agents", "Everything, from every agent", null, v.agent === "all"))
       .children(chips))
     .child(iconButton(t, "sp-close", "×", "Close (Esc)", () => dismiss()));
+}
+
+// A live agent: a dot in its status color, as Herdr marks it. A closed one: a hollow ring.
+function statusDot(t, agent) {
+  const dot = div().flex_none().w(7).h(7).rounded(4);
+  return agent ? dot.bg(t[agent.status] ?? t.unknown) : dot.border(1).border_color(t.dim);
 }
 
 function tabButton(v, t, key, label) {
